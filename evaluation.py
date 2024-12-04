@@ -27,6 +27,7 @@ import lpips
 import torch.nn.functional as F
 from tools.depth import acc_threshold,abs_error
 import pdb
+import time
 
 @torch.no_grad()
 def main(cfg):
@@ -157,7 +158,7 @@ def main(cfg):
             imageio.mimwrite(f'./{cfg.infer.save_folder}/{name}.mp4', imgs, fps=30, quality=10)
             imageio.mimwrite(f'./{cfg.infer.save_folder}/{name}_nrm.mp4', normal_whites, fps=30, quality=10)
 
-        
+        start_time = time.time()
         if cfg.infer.save_mesh:
             from tools.meshExtractor import MeshExtractor
             aabb = cfg.infer.aabb
@@ -170,6 +171,9 @@ def main(cfg):
                 cams =  uni_video_path(cfg.infer.video_frames, cfg.infer.dataset, sample=sample, fov=fov)
                 mesh_imgs = render_mesh(cams, f'{cfg.infer.save_folder}/{name}.obj')[...,:3]
                 imageio.mimwrite(f'{cfg.infer.save_folder}/{name}_mesh.mp4', mesh_imgs, fps=30, quality=10)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"Elapsed time: {elapsed_time:.6f} seconds")
                 
         del sample
     

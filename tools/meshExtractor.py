@@ -109,7 +109,6 @@ class MeshExtractor(object):
                         extrinsic=np.asarray((cam.world_view_transform.T).cpu().numpy()))
 
         mesh = volume.extract_triangle_mesh()
-        pdb.set_trace()
         # write mesh
         # os.makedirs(os.path.dirname(path), exist_ok=True)
         # o3d.io.write_triangle_mesh(path, mesh)

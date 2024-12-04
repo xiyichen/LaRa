@@ -182,24 +182,8 @@ def get_front_view_idx(annot_reader, cameras, frame_idx):
 class HumanDataset(torch.utils.data.Dataset):
     def __init__(self, cfg):
         super(HumanDataset, self).__init__()
-        # self.cfg = cfg
-        # # self.data_root = cfg.data_root
-        # self.split = cfg.split
         self.img_size = np.array(cfg.img_size)
-
-        # self.metas = h5py.File(self.data_root, 'r')
-        # scenes_name = np.array(sorted(self.metas.keys()))
-        
-        # if 'splits' in scenes_name:
-        #     self.scenes_name = self.metas['splits']['test'][:].astype(str) #self.metas['splits'][self.split]
-        # else:
-        #     i_test = np.arange(len(scenes_name))[::10][:cfg.n_scenes]
-        #     i_train = np.array([i for i in np.arange(len(scenes_name)) if
-        #                     (i not in i_test)])[:cfg.n_scenes]
-        #     self.scenes_name = scenes_name[i_train] if self.split=='train' else scenes_name[i_test]
             
-        self.b2c = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]], dtype=np.float32)
-        # self.n_group = cfg.n_group
         self.scenes_name = ['0008_01']
         # self.scenes_name = ['0019_06']
         # self.scenes_name = ['0018_05']
@@ -288,70 +272,20 @@ class HumanDataset(torch.utils.data.Dataset):
         tar_msks = np.stack(tar_msks, axis=0)
         tar_msks = torch.from_numpy(tar_msks).clamp(0,1).float()
         tar_w2cs = np.stack(tar_w2cs, axis=0)
-        # tar_w2cs = torch.from_numpy(tar_w2cs).float()
-        # tar_ixts = np.stack(tar_ixts, axis=0)
         tar_ixts = np.stack(Ks, axis=0)
-        # tar_ixts = torch.from_numpy(tar_ixts).float()
         bg_colors = torch.ones(4,3).float()
         
-        # shift and normalize
-        # gender = main_reader.actor_info['gender']
-        # model = SMPLX(
-        #     '/fs/gamma-projects/3dnvs_gamma/SiTH/data/body_models/smplx', smpl_type='smplx',
-        #     gender=gender, use_face_contour=True, flat_hand_mean=False, use_pca=False, 
-        #     num_betas=10, num_expression_coeffs=10, ext='npz'
-        # )
-        # smplx_dict = annot_reader.get_SMPLx(Frame_id=frame_idx)
-        # betas = torch.from_numpy(smplx_dict["betas"]).unsqueeze(0).float()
-        # expression = torch.from_numpy(smplx_dict["expression"]).unsqueeze(0).float()
-        # fullpose = torch.from_numpy(smplx_dict["fullpose"]).unsqueeze(0).float()
-        # translation = torch.from_numpy(smplx_dict['transl']).unsqueeze(0).float()
-        # output = model(
-        #     betas=betas, 
-        #     expression=expression,
-        #     global_orient = fullpose[:, 0].clone(),
-        #     body_pose = fullpose[:, 1:22].clone(),
-        #     jaw_pose = fullpose[:, 22].clone(),
-        #     leye_pose = fullpose[:, 23].clone(),
-        #     reye_pose = fullpose[:, 24].clone(),
-        #     left_hand_pose = fullpose[:, 25:40].clone(), 
-        #     right_hand_pose = fullpose[:, 40:55].clone(),
-        #     transl = translation,
-        #     return_verts=True)
-        # smplx_vertices = output.vertices.detach().cpu().numpy().squeeze()
-        # center = (smplx_vertices.max(axis=0)+smplx_vertices.min(axis=0))/2
-        
         sampled_points = visual_hull_samples(tar_msks.detach().cpu().numpy().astype(np.float32), tar_ixts@tar_w2cs[:,:3,:4].astype(np.float32))
-        # pdb.set_trace()
+
         center = (sampled_points.min(axis=0) + sampled_points.max(axis=0))/2
-        # pdb.set_trace()
         
-        
-        # smplx_vertices -= center
         sampled_points -= center
-        # center = torch.from_numpy(center).float()
         tar_w2cs[:,:3,3] += (tar_w2cs[:,:3,:3]@center.reshape(3,1)).reshape(-1,3)
         tar_w2cs[:,:3,3] *= (0.4 / sampled_points.max(axis=0).max())
-        # tar_w2cs[:,:3,3] *= (0.45 / smplx_vertices.max(axis=0).max())
-        # smplx_vertices *= (0.45 / smplx_vertices.max(axis=0).max())
-        # pdb.set_trace()
-        
         
         
         R = np.array([[1,0,0],[0,0,1],[0,-1,0]])
-        # smplx_vertices = smplx_vertices@R[:3,:3].T
         tar_w2cs[:,:3,:3] = tar_w2cs[:,:3,:3]@R[:3,:3].T[None]
-        
-        # verts_cam = (tar_w2cs[0,:3,:3]@smplx_vertices.T).T + tar_w2cs[0,:3,3]
-        # verts_cam = verts_cam/verts_cam[:,-1:]
-        # verts_2d = (Ks[0]@verts_cam.T).T[:,:2]
-        # img = np.zeros((512, 512, 3))
-        # for idx_, loc in enumerate(verts_2d):
-        #     x = int(loc[0])
-        #     y = int(loc[1])
-        #     cv2.circle(img, (x, y), 1, (255, 0, 0), -1)
-        # cv2.imwrite('./debug.png', img[:,:,::-1])
-        # pdb.set_trace()
         
         # get tar_c2ws
         tar_c2ws = np.linalg.inv(tar_w2cs)
@@ -365,11 +299,7 @@ class HumanDataset(torch.utils.data.Dataset):
         transform_mats = ref_c2w @ tar_w2cs[:1]
         tar_w2cs = tar_w2cs.copy() @ tar_c2ws[:1] @ ref_w2c
         tar_c2ws = transform_mats @ tar_c2ws.copy()
-        # transform_mats = np.eye(4)[None]
- 
-        # ret = {'fovx':0.5236, 
-        #        'fovy':0.5236,
-        #        }
+        
         ret = {}
         H, W = self.img_size
 

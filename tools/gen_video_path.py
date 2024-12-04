@@ -122,7 +122,7 @@ def uni_mesh_path(N, data, sample, fov=None):
     for elevation in [0,-30,30]:
         if data.dataset_name in ['gobjeverse','GSO']:
             pathes.extend(generate_gobjverse_frames(N, data, sample, elevation,fov=fov))
-        elif data.dataset_name in ['instant3d','co3d','mvgen']:
+        elif data.dataset_name in ['instant3d','co3d','mvgen','human']:
             pathes.extend(generate_instant3d_frames(N, data, sample, elevation,fov=fov))
         elif data.dataset_name in ['unposed']:
             pathes.extend(generate_unposed_frames(N, data, sample, elevation,fov=fov))
