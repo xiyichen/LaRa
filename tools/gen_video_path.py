@@ -108,7 +108,7 @@ def uni_video_path(N, data, sample=None, fov=None):
     
     if data.dataset_name in ['gobjeverse','GSO']:
         pathes =  generate_gobjverse_frames(N, data, sample, fov=fov)
-    elif data.dataset_name in ['instant3d','mvgen']:
+    elif data.dataset_name in ['instant3d','mvgen','human']:
         pathes =  generate_instant3d_frames(N, data, sample, fov=fov)
     elif data.dataset_name in ['unposed']:
         pathes =  generate_unposed_frames(N, data, sample, fov=fov)

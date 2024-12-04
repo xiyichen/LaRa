@@ -3,10 +3,12 @@ from dataLoader.google_scanned_objects import GoogleObjsDataset
 from dataLoader.instant3d import Instant3DObjsDataset
 from dataLoader.mipnerf import MipNeRF360Dataset
 from dataLoader.mvgen import MVGenDataset
+from dataLoader.human import HumanDataset
 
 dataset_dict = {'gobjeverse': gobjverse, 
                 'GSO': GoogleObjsDataset,
                 'instant3d': Instant3DObjsDataset,
                 'mipnerf360': MipNeRF360Dataset,
                 'mvgen': MVGenDataset,
+                'human': HumanDataset
                 }

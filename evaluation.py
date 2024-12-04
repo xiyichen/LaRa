@@ -26,6 +26,7 @@ from tools.gen_video_path import uni_video_path,uni_mesh_path
 import lpips
 import torch.nn.functional as F
 from tools.depth import acc_threshold,abs_error
+import pdb
 
 @torch.no_grad()
 def main(cfg):
@@ -53,7 +54,20 @@ def main(cfg):
     os.makedirs(cfg.infer.save_folder, exist_ok=True)
     for i in tqdm(range(len(loader))):#len(loader)
         sample = next(loader_iter)
-        sample = {key: tensor.to(device) if torch.is_tensor(tensor) else tensor for key, tensor in sample.items()} 
+        sample = {key: tensor.to(device).float() if torch.is_tensor(tensor) else tensor for key, tensor in sample.items()}
+        # pdb.set_trace()
+        # dict_keys(['fovx', 'fovy', 'tar_c2w', 'tar_w2c', 'tar_ixt', 'tar_rgb', 'bg_color', 'transform_mats', 'near_far', 'meta', 'tar_rays', 'tar_rays_down'])
+        # fovx/fovy: [0.5236]
+        # tar_c2w/tar_w2c: [1,4,4,4]
+        # tar_ixt: [1,4,3,3], [955.4050, 256]
+        # tar_rgb: [1,4,512,512,3], [0,1]
+        # bg_color: [1,4,3] 1s
+        # transform_mats: [1,1,4,4]
+        # near_far: [1,2]
+        # meta: {'scene': ['human'], 'tar_h/w': ([512])}
+        # tar_rays: [1,4,512,512,6]
+        # tar_rays_down: [1,4,32,32,6]
+        # pdb.set_trace()
 
         my_system.net.eval()
         
@@ -113,7 +127,10 @@ def main(cfg):
         names.append(name)
 
 
-        fov = [sample['fovx'],sample['fovy']]
+        # fov = [sample['fovx'],sample['fovy']]
+        focal = sample['tar_ixt'][0][0][0][0].item()
+        fov = np.deg2rad(2 * np.degrees(np.arctan(512 / (2 * focal))))
+        fov = [torch.tensor([fov]), torch.tensor([fov])]
 
         if cfg.infer.video_frames > 0:
 
@@ -136,9 +153,9 @@ def main(cfg):
         
                 imgs.append(img)
                 normal_whites.append(normal_white)
-
-            imageio.mimwrite(f'{cfg.infer.save_folder}/{name}.mp4', imgs, fps=30, quality=10)
-            imageio.mimwrite(f'{cfg.infer.save_folder}/{name}_nrm.mp4', normal_whites, fps=30, quality=10)
+            print(f'./{cfg.infer.save_folder}/{name}.mp4')
+            imageio.mimwrite(f'./{cfg.infer.save_folder}/{name}.mp4', imgs, fps=30, quality=10)
+            imageio.mimwrite(f'./{cfg.infer.save_folder}/{name}_nrm.mp4', normal_whites, fps=30, quality=10)
 
         
         if cfg.infer.save_mesh:

@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import numpy as np
 
 from lightning.renderer_2dgs import Renderer
-from lightning.utils import MiniCam
+from lightning.utils import MiniCam, MiniCamOffCenter
 from tools.rsh import rsh_cart_3
 
 import pytorch_lightning as L
@@ -473,7 +473,7 @@ class Network(L.LightningModule):
         for i in range(B):
  
             znear, zfar = batch['near_far'][i]
-            fovx,fovy = batch['fovx'][i], batch['fovy'][i]
+            # fovx,fovy = batch['fovx'][i], batch['fovy'][i]
             height, width = int(batch['meta']['tar_h'][i]*render_img_scale), int(batch['meta']['tar_w'][i]*render_img_scale)
 
             mask = masks[i].detach()
@@ -484,12 +484,13 @@ class Network(L.LightningModule):
             
             outputs_view = []
             tar_c2ws = batch['tar_c2w'][i]
+            tar_Ks = batch['tar_ixt'][i]
             for j, c2w in enumerate(tar_c2ws):
                 
                 bg_color = batch['bg_color'][i,j]
                 self.gs_render.set_bg_color(bg_color)
             
-                cam = MiniCam(c2w, width, height, fovy, fovx, znear, zfar, self.device)
+                cam = MiniCamOffCenter(c2w, width, height, tar_Ks[j], znear, zfar, self.device)
                 rays_d = batch['tar_rays'][i,j]
                 
                 # coarse
@@ -520,7 +521,7 @@ class Network(L.LightningModule):
                     self.gs_render.set_bg_color(bg_color)
                 
                     rays_d = batch['tar_rays'][i,j]
-                    cam = MiniCam(c2w, width, height, fovy, fovx, znear, zfar, self.device)
+                    cam = MiniCamOffCenter(c2w, width, height, tar_Ks[j], znear, zfar, self.device)
                     frame_fine = self.gs_render.render_img(cam, rays_d, _centers, _shs_fine, _opacity_coarse[i][mask], _scaling_coarse[i][mask], _rotation_coarse[i][mask], self.device, prex='_fine')
                     outputs_view[j].update(frame_fine)
             

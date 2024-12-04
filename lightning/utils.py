@@ -1,6 +1,7 @@
 import torch, os, json, math
 import numpy as np
 from torch.optim.lr_scheduler import LRScheduler
+import pdb
 
 def getProjectionMatrix(znear, zfar, fovX, fovY):
 
@@ -18,6 +19,79 @@ def getProjectionMatrix(znear, zfar, fovX, fovY):
     P[2, 3] = -(zfar * znear) / (zfar - znear)
     return P
 
+# def focal_to_fov(focal, pixels):
+#     return 2*math.atan(pixels/(2*focal))
+
+def getProjectionMatrixOffCenter(znear, zfar, K):
+    fx = K[0][0].item()
+    fy = K[1][1].item()
+    cx = K[0][2].item()
+    cy = K[1][2].item()
+    fovX = np.deg2rad(2 * np.degrees(np.arctan(512 / (2 * fx))))
+    fovY = np.deg2rad(2 * np.degrees(np.arctan(512 / (2 * fy))))
+
+    tanHalfFovY = np.tan((fovY / 2))
+    tanHalfFovX = np.tan((fovX / 2))
+
+    # the origin at center of image plane
+    top = tanHalfFovY * znear
+    bottom = -top
+    right = tanHalfFovX * znear
+    left = -right
+
+    # shift the frame window due to the non-zero principle point offsets
+    offset_x = cx - (512/2)
+    offset_x = (offset_x/fx)*znear
+    offset_y = cy - (512/2)
+    offset_y = (offset_y/fy)*znear
+
+    top = top + offset_y
+    left = left + offset_x
+    right = right + offset_x
+    bottom = bottom + offset_y
+
+    P = torch.zeros(4, 4)
+
+    z_sign = 1.0
+
+    P[0, 0] = 2.0 * znear / (right - left)
+    P[1, 1] = 2.0 * znear / (top - bottom)
+    P[0, 2] = (right + left) / (right - left)
+    P[1, 2] = (top + bottom) / (top - bottom)
+    P[3, 2] = z_sign
+    P[2, 2] = z_sign * zfar / (zfar - znear)
+    P[2, 3] = -(zfar * znear) / (zfar - znear)
+    return P
+
+class MiniCamOffCenter:
+    def __init__(self, c2w, width, height, K, znear, zfar, device):
+        # c2w (pose) should be in NeRF convention.
+
+        self.image_width = width
+        self.image_height = height
+        self.znear = znear
+        self.zfar = zfar
+        fx = K[0][0].item()
+        fy = K[1][1].item()
+        self.FoVx = np.deg2rad(2 * np.degrees(np.arctan(512 / (2 * fx))))
+        self.FoVy = np.deg2rad(2 * np.degrees(np.arctan(512 / (2 * fy))))
+
+        w2c = torch.inverse(c2w)
+
+        # rectify...
+        # w2c[1:3, :3] *= -1
+        # w2c[:3, 3] *= -1
+
+        self.world_view_transform = w2c.transpose(0, 1).to(device)
+        self.projection_matrix = (
+            getProjectionMatrixOffCenter(
+                znear=self.znear, zfar=self.zfar, K=K
+            )
+            .transpose(0, 1)
+            .to(device)
+        )
+        self.full_proj_transform = (self.world_view_transform @ self.projection_matrix).float()
+        self.camera_center = -c2w[:3, 3].to(device)
 
 class MiniCam:
     def __init__(self, c2w, width, height, fovy, fovx, znear, zfar, device):
