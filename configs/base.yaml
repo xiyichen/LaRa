@@ -1,6 +1,6 @@
-gpu_id: [0,1,2,3]
+gpu_id: [0]
 
-exp_name: LaRa/finetune_multi_gpu
+exp_name: LaRa/finetune_0.45_depth
 n_views: 4
 
 model:
@@ -49,14 +49,14 @@ test_dataset:
     load_normal: True
 
 train:
-    batch_size: 3
+    batch_size: 4
     lr: 4e-4
     beta1: 0.9
     beta2: 0.95
     weight_decay: 0.05
     # betas: [0.9, 0.95]
     warmup_iters: 1000
-    n_epoch: 100
+    n_epoch: 20
     # limit_train_batches: 1.0
     # limit_val_batches: 1.0
     limit_train_batches: 1.0

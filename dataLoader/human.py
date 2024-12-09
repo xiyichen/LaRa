@@ -12,6 +12,7 @@ import h5py
 from smplx.body_models import SMPLX
 import torch.nn.functional as F
 import json
+import time
 
 def fov_to_ixt(fov, reso):
     ixt = np.eye(3, dtype=np.float32)
@@ -169,33 +170,45 @@ class HumanDataset(torch.utils.data.Dataset):
         # self.scenes_name = ['0012_09']
         # self.scenes_name = ['0811_08']
         self.scenes_name = []
+        self.main_readers = {}
+        self.annot_readers = {}
         if self.split == 'test':
             count = 0
             with open('/fs/gamma-datasets/MannequinChallenge/dna_rendering/file_grids/Part_1_file_gid.json', 'r') as f:
                 d = json.load(f)
             for k in d.keys():
-                if count >= 4:
-                    continue
-                # if not '0147_04' in k:
-                # if not '0012_09' in k:
-                # if not '0008_01' in k:
-                    # continue
-                if 'main' in k and 'apose' not in k:
-                    self.scenes_name.append(k.split('/')[-1].split('.')[0])
-                    count += 1
+                # if count >= 3:
+                #     continue
+                if '0147_04' in k or '0012_09' in k or '0102_02' in k:
+                # if True:
+                    # if not '0147_04' in k:
+                    # if not '0012_09' in k:
+                    # if not '0008_01' in k:
+                        # continue
+                    if 'main' in k and 'apose' not in k:
+                        file_id = k.split('/')[-1].split('.')[0]
+                        self.scenes_name.append(file_id)
+                        main_file = f'/fs/gamma-datasets/MannequinChallenge/dna_rendering_data/{file_id}.smc'
+                        annot_file = main_file.replace('.smc', '_annots.smc')
+                        self.main_readers[file_id] = SMCReader(main_file)
+                        self.annot_readers[file_id] = SMCReader(annot_file)
+                        count += 1
         else:
             with open('/fs/gamma-datasets/MannequinChallenge/dna_rendering/file_grids/Part_2_file_gid.json', 'r') as f:
                 d = json.load(f)
             for k in d.keys():
                 if 'main' in k and 'apose' not in k:
-                    self.scenes_name.append(k.split('/')[-1].split('.')[0])
+                    file_id = k.split('/')[-1].split('.')[0]
+                    self.scenes_name.append(file_id)
+                    main_file = f'/fs/gamma-datasets/MannequinChallenge/dna_rendering_data/{file_id}.smc'
+                    annot_file = main_file.replace('.smc', '_annots.smc')
+                    self.main_readers[file_id] = SMCReader(main_file)
+                    self.annot_readers[file_id] = SMCReader(annot_file)
         
     def __getitem__(self, index):
         file_id = self.scenes_name[index]
-        main_file = f'/fs/gamma-datasets/MannequinChallenge/dna_rendering_data/{file_id}.smc'
-        annot_file = main_file.replace('.smc', '_annots.smc')
-        main_reader = SMCReader(main_file)
-        annot_reader = SMCReader(annot_file)
+        main_reader = self.main_readers[file_id]
+        annot_reader = self.annot_readers[file_id]
         num_frames = int(main_reader.smc['Camera_5mp'].attrs['num_frame'])
         if self.split == 'train':
             frame_idx = random.choice(list(range(num_frames//5)))*5
@@ -315,15 +328,18 @@ class HumanDataset(torch.utils.data.Dataset):
         tar_msks_downsampled[tar_msks_downsampled>=0.5] = 1
         tar_ixts_downsampled = tar_ixts.copy() / (512//hull_res)
         tar_ixts_downsampled[:,-1,-1] = 1
+        start_time = time.time()
         sampled_points = visual_hull_samples(tar_msks_downsampled.detach().cpu().numpy().astype(np.float32), tar_ixts_downsampled@tar_w2cs[:,:3,:4].astype(np.float32), grid_resolution=hull_res, aabb=(-1.2, 1.2))
+        end_time = time.time()
+        elapsed_time = end_time - start_time
         center = (sampled_points.min(axis=0) + sampled_points.max(axis=0))/2
-        # print(sampled_points.max(axis=0), sampled_points.min(axis=0), center)
+        # print(sampled_points.max(axis=0).max(), sampled_points.min(axis=0).min(), center, f'{elapsed_time:.2f} seconds')
         sampled_points -= center
         tar_w2cs[:,:3,3] += (tar_w2cs[:,:3,:3]@center.reshape(3,1)).reshape(-1,3)
         
         # print(sampled_points.shape, sampled_points.max(axis=0), sampled_points.min(axis=0))
         # print(sampled_points.shape, center, sampled_points.max(axis=0).max())
-        tar_w2cs[:,:3,3] *= (0.3 / sampled_points.max(axis=0).max())
+        tar_w2cs[:,:3,3] *= (0.45 / sampled_points.max(axis=0).max())
         del sampled_points
         
         
