@@ -53,21 +53,37 @@ def main(cfg):
         logger = TensorBoardLogger(save_dir=cfg.logger.dir, name=exp_name)
     elif cfg.logger.name == "wandb":
         os.environ["WANDB__SERVICE_WAIT"] = "300"
-        logger = WandbLogger(name=exp_name,project=project_name, save_dir=cfg.logger.dir, entity="large-reconstruction-model")
+        logger = WandbLogger(name=exp_name,project=project_name, save_dir=cfg.logger.dir)
     
     # Set up ModelCheckpoint callback
     checkpoint_callback = ModelCheckpoint(
         dirpath=cfg.logger.dir,        # Path where checkpoints will be saved
         filename='{epoch}',        # Filename for the checkpoints
-        # save_top_k=1,             # Set to -1 to save all checkpoints
+        save_top_k=1,             # Set to -1 to save all checkpoints
         every_n_epochs=1,          # Save a checkpoint every K epochs
         save_on_train_epoch_end=True,  # Ensure it saves at the end of an epoch, not the beginning
     )
 
-    my_system = system(cfg)
+    # my_system = system(cfg)
+    # if cfg.model.ckpt_path and os.path.exists(cfg.model.ckpt_path):
+    #     print(f"Loading model weights from {cfg.model.ckpt_path}")
+    #     my_system = system.load_from_checkpoint(cfg.model.ckpt_path, cfg=cfg)
+    if cfg.model.ckpt_path and os.path.exists(cfg.model.ckpt_path):
+        print(f"Loading model weights from {cfg.model.ckpt_path}")
+        
+        # Map tensors to the current device in a multi-GPU setup
+        map_location = lambda storage, loc: storage.cuda() if torch.cuda.is_available() else storage.cpu()
+        
+        my_system = system.load_from_checkpoint(
+            cfg.model.ckpt_path, 
+            cfg=cfg,
+            map_location=map_location
+        )
+    else:
+        my_system = system(cfg)
     # pdb.set_trace()
 
-    trainer = L.Trainer(devices=cfg.gpu_id,
+    trainer = L.Trainer(devices=4,
                         num_nodes=1,
                         max_epochs=cfg.train.n_epoch,
                         accelerator='gpu',
@@ -88,7 +104,7 @@ def main(cfg):
         my_system, 
         train_dataloaders=train_loader,
         val_dataloaders=val_loader,
-        ckpt_path=cfg.model.ckpt_path
+        # ckpt_path=cfg.model.ckpt_path
         )
     
     dt = datetime.now() - t0

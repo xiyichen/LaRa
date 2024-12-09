@@ -471,7 +471,7 @@ class Network(L.LightningModule):
         outputs,render_pkg = [],[]
         for i in range(B):
  
-            znear, zfar = batch['near_far'][i]
+            # znear, zfar = batch['near_far'][i]
             # fovx,fovy = batch['fovx'][i], batch['fovy'][i]
             height, width = int(batch['meta']['tar_h'][i]*render_img_scale), int(batch['meta']['tar_w'][i]*render_img_scale)
 
@@ -485,6 +485,8 @@ class Network(L.LightningModule):
             tar_c2ws = batch['tar_c2w'][i]
             tar_Ks = batch['tar_ixt'][i]
             for j, c2w in enumerate(tar_c2ws):
+                
+                znear, zfar = batch['near_far'][i,j]
                 
                 bg_color = batch['bg_color'][i,j]
                 self.gs_render.set_bg_color(bg_color)

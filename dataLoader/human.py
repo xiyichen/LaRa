@@ -20,7 +20,7 @@ def fov_to_ixt(fov, reso):
     ixt[[0,1],[0,1]] = focal
     return ixt
 
-def visual_hull_samples(masks, KRT, n_pts=100_000, grid_resolution=64, aabb=(-1., 1.)):
+def visual_hull_samples(masks, KRT, n_pts=10000000, grid_resolution=64, aabb=(-1.0, 1.0)):
     """ 
     Args:
         masks: (n_images, H, W)
@@ -29,8 +29,8 @@ def visual_hull_samples(masks, KRT, n_pts=100_000, grid_resolution=64, aabb=(-1.
         aabb: (2)
     """
     # create voxel grid coordinates
-    grid = np.linspace(aabb[0], aabb[1], grid_resolution)
-    grid = np.meshgrid(grid, grid, grid)
+    grid = np.linspace(aabb[0], aabb[1], grid_resolution) # sample grid_resolution points in interval aabb
+    grid = np.meshgrid(grid, grid, grid) # make it 3d grid
     grid_loc = np.stack(grid, axis=-1).reshape(-1, 3) # n_pts, 3
 
     # project grid locations to the image plane
@@ -51,6 +51,27 @@ def visual_hull_samples(masks, KRT, n_pts=100_000, grid_resolution=64, aabb=(-1.
     grid_samples = grid_loc[_ind] # (n_pts, 2)
     all_samples = grid_samples
     np.random.shuffle(all_samples)
+    
+    # ret = all_samples[:n_pts]
+    
+    # all_samples_homo = np.ones((len(ret), 4))
+    # all_samples_homo[:,:3] = ret
+    
+    # for i in range(len(KRT)):
+    #     all_samples_2d = all_samples_homo@KRT[i].T
+    #     all_samples_2d = (all_samples_2d[:,:2]/all_samples_2d[:,2:])
+    #     # pdb.set_trace()
+        
+    #     size = masks.shape[-1]
+    #     img = np.zeros((size, size))
+    #     for idx_, loc in enumerate(all_samples_2d):
+    #         x = int(loc[0])
+    #         y = int(loc[1])
+    #         if x < 0 or y < 0 or x >= size or y >= size:
+    #             continue
+    #         cv2.circle(img, (x, y), 10, (255, 255, 255), -1)
+    #     cv2.imwrite(f'./debug_vis/{i}.png', img)
+    # pdb.set_trace()
     
     return all_samples[:n_pts]
 
@@ -149,13 +170,19 @@ class HumanDataset(torch.utils.data.Dataset):
         # self.scenes_name = ['0811_08']
         self.scenes_name = []
         if self.split == 'test':
+            count = 0
             with open('/fs/gamma-datasets/MannequinChallenge/dna_rendering/file_grids/Part_1_file_gid.json', 'r') as f:
                 d = json.load(f)
             for k in d.keys():
+                if count >= 4:
+                    continue
                 # if not '0147_04' in k:
-                #     continue
+                # if not '0012_09' in k:
+                # if not '0008_01' in k:
+                    # continue
                 if 'main' in k and 'apose' not in k:
                     self.scenes_name.append(k.split('/')[-1].split('.')[0])
+                    count += 1
         else:
             with open('/fs/gamma-datasets/MannequinChallenge/dna_rendering/file_grids/Part_2_file_gid.json', 'r') as f:
                 d = json.load(f)
@@ -194,14 +221,14 @@ class HumanDataset(torch.utils.data.Dataset):
             all_other_views = all_other_views[:4]
         all_views = [front_view_idx, left_view_idx, back_view_idx, right_view_idx] + all_other_views
         
-        tar_ixts = []
         Ks = []
         tar_w2cs = []
         tar_img = []
         tar_msks = []
+        tar_msks_for_bbox = []
         bg_colors = []
         # for cam_idx in ([front_view_idx, left_view_idx, back_view_idx, right_view_idx]):
-        for cam_idx in all_views:
+        for i, cam_idx in enumerate(all_views):
             # Load image, mask
             image = main_reader.get_img('Camera_5mp', cam_ids_low[cam_idx], Image_type='color', Frame_id=frame_idx)
             image = cv2.undistort(image, cameras_low['K'][cam_idx], cameras_low['D'][cam_idx])
@@ -221,10 +248,11 @@ class HumanDataset(torch.utils.data.Dataset):
             # component_sizes[0] = 0
             # largest_component_label = component_sizes.argmax()
             # mask = (labeled_mask == largest_component_label)
-            if self.split == 'train':
-                bg_color = np.ones(3).astype(np.float32)*random.choice([0.0, 0.5, 1.0])
-            else:
+                
+            if self.split != 'train' or i < 4:
                 bg_color = np.ones(3).astype(np.float32)
+            else:
+                bg_color = np.ones(3).astype(np.float32)*random.choice([0.0, 0.5, 1.0])
             bg_colors.append(bg_color)
             
             image = image * mask + (bg_color*255) * (1.0 - mask)
@@ -251,13 +279,14 @@ class HumanDataset(torch.utils.data.Dataset):
             mask[mask<0.5] = 0
             mask[mask>=0.5] = 1
             
+            mask_for_bbox = mask.copy()
+            labeled_mask, _ = label(mask_for_bbox)
+            component_sizes = np.bincount(labeled_mask.ravel())
+            component_sizes[0] = 0
+            largest_component_label = component_sizes.argmax()
+            mask_for_bbox = (labeled_mask == largest_component_label)
+            
             Ks.append(K)
-            K_pseudo = np.eye(3)
-            K_pseudo[0][0] = 955.4050
-            K_pseudo[1][1] = 955.4050
-            K_pseudo[0][2] = 256
-            K_pseudo[1][2] = 256
-            tar_ixts.append(K_pseudo)
             
             w2c_lgm = np.eye(4)
             w2c_lgm[:3,:3] = cameras_low['R'][cam_idx]
@@ -265,6 +294,7 @@ class HumanDataset(torch.utils.data.Dataset):
             tar_w2cs.append(w2c_lgm)
             tar_img.append(image/255)
             tar_msks.append(mask)
+            tar_msks_for_bbox.append(mask_for_bbox)
         del main_reader
         del annot_reader
         
@@ -272,20 +302,28 @@ class HumanDataset(torch.utils.data.Dataset):
         tar_img = torch.from_numpy(tar_img).clamp(0,1).float()
         tar_msks = np.stack(tar_msks, axis=0)
         tar_msks = torch.from_numpy(tar_msks).clamp(0,1).float()
+        tar_msks_for_bbox = np.stack(tar_msks_for_bbox, axis=0)
+        tar_msks_for_bbox = torch.from_numpy(tar_msks_for_bbox).clamp(0,1).float()
         tar_w2cs = np.stack(tar_w2cs, axis=0)
         tar_ixts = np.stack(Ks, axis=0)
         # bg_colors = torch.ones(len(tar_img),3).float()
         bg_colors = np.stack(bg_colors)
         
-        tar_msks_downsampled = F.interpolate(tar_msks.unsqueeze(1), size=(64, 64), mode='bilinear', align_corners=False).squeeze(1)
-        tar_ixts_downsampled = tar_ixts / (512//64)
+        hull_res = 64
+        tar_msks_downsampled = F.interpolate(tar_msks_for_bbox.unsqueeze(1), size=(hull_res, hull_res), mode='bilinear', align_corners=False).squeeze(1)
+        tar_msks_downsampled[tar_msks_downsampled<0.5] = 0
+        tar_msks_downsampled[tar_msks_downsampled>=0.5] = 1
+        tar_ixts_downsampled = tar_ixts.copy() / (512//hull_res)
         tar_ixts_downsampled[:,-1,-1] = 1
-        sampled_points = visual_hull_samples(tar_msks_downsampled.detach().cpu().numpy().astype(np.float32), tar_ixts_downsampled@tar_w2cs[:,:3,:4].astype(np.float32))
+        sampled_points = visual_hull_samples(tar_msks_downsampled.detach().cpu().numpy().astype(np.float32), tar_ixts_downsampled@tar_w2cs[:,:3,:4].astype(np.float32), grid_resolution=hull_res, aabb=(-1.2, 1.2))
         center = (sampled_points.min(axis=0) + sampled_points.max(axis=0))/2
+        # print(sampled_points.max(axis=0), sampled_points.min(axis=0), center)
         sampled_points -= center
         tar_w2cs[:,:3,3] += (tar_w2cs[:,:3,:3]@center.reshape(3,1)).reshape(-1,3)
-        # print(center, sampled_points.max(axis=0).max())
-        tar_w2cs[:,:3,3] *= (0.4 / sampled_points.max(axis=0).max())
+        
+        # print(sampled_points.shape, sampled_points.max(axis=0), sampled_points.min(axis=0))
+        # print(sampled_points.shape, center, sampled_points.max(axis=0).max())
+        tar_w2cs[:,:3,3] *= (0.3 / sampled_points.max(axis=0).max())
         del sampled_points
         
         
@@ -304,6 +342,13 @@ class HumanDataset(torch.utils.data.Dataset):
         transform_mats = ref_c2w @ tar_w2cs[:1]
         tar_w2cs = tar_w2cs.copy() @ tar_c2ws[:1] @ ref_w2c
         tar_c2ws = transform_mats @ tar_c2ws.copy()
+        # transform_mats = np.eye(4)[None].astype(np.float32)
+        
+        near_far = []
+        for i in range(len(tar_c2ws)):
+            r = np.linalg.norm(tar_c2ws[i,:3,3])
+            near_far.append(np.array([r-0.8, r+0.8]).astype(np.float32))
+        near_far = np.stack(near_far, axis=0).astype(np.float32)
         
         ret = {}
         H, W = self.img_size
@@ -317,7 +362,7 @@ class HumanDataset(torch.utils.data.Dataset):
                     'bg_color': bg_colors.astype(np.float32)
                     })
         
-        near_far = np.array([r-0.8, r+0.8]).astype(np.float32)
+        # near_far = np.array([r-0.8, r+0.8]).astype(np.float32)
         ret.update({'near_far': np.array(near_far).astype(np.float32)})
         ret.update({'meta': {'scene': self.scenes_name[index], 'tar_view': [0,1,2,3], 'frame_id': 0}})
         ret['meta'].update({f'tar_h': int(H), f'tar_w': int(W)})

@@ -11,4 +11,4 @@
 export NCCL_DEBUG=INFO
 
 ## run
-CUDA_VISIBLE_DEVICES=0,1,2,3 python train_lightning.py
+CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 train_lightning.py
