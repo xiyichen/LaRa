@@ -11,6 +11,7 @@ os.environ["OPENBLAS_NUM_THREADS"] = f"{n_thread}"
 import torch
 from dataLoader import dataset_dict
 from omegaconf import OmegaConf
+import pdb
 
 from lightning.system import system
 from torch.utils.data import DataLoader
@@ -59,11 +60,12 @@ def main(cfg):
         dirpath=cfg.logger.dir,        # Path where checkpoints will be saved
         filename='{epoch}',        # Filename for the checkpoints
         # save_top_k=1,             # Set to -1 to save all checkpoints
-        every_n_epochs=5,          # Save a checkpoint every K epochs
+        every_n_epochs=1,          # Save a checkpoint every K epochs
         save_on_train_epoch_end=True,  # Ensure it saves at the end of an epoch, not the beginning
     )
 
     my_system = system(cfg)
+    # pdb.set_trace()
 
     trainer = L.Trainer(devices=cfg.gpu_id,
                         num_nodes=1,

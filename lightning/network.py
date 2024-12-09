@@ -9,7 +9,7 @@ from tools.rsh import rsh_cart_3
 
 import pytorch_lightning as L
 from torchvision import transforms
-
+import pdb
 
 class DinoWrapper(L.LightningModule):
     """
@@ -180,7 +180,6 @@ def get_pose_feat(src_exts, tar_ext, src_ixts, W, H):
     return torch.cat((c2w_ref,fx_fy,fx_fy), dim=-1)
 
 def projection(grid, w2cs, ixts):
-
     points = grid.reshape(1,-1,3) @ w2cs[:,:3,:3].permute(0,2,1) + w2cs[:,:3,3][:,None]
     points = points @ ixts.permute(0,2,1)
     points_xy = points[...,:2]/points[...,-1:]
@@ -435,7 +434,7 @@ class Network(L.LightningModule):
             n_views_sel = random.randint(2, 4) if self.cfg.train.use_rand_views else self.cfg.n_views
         else:
             n_views_sel = self.cfg.n_views
-
+        
         _inps =batch['tar_rgb'][:,:n_views_sel].reshape(B*n_views_sel,H,W,C)
         _inps = torch.einsum('bhwc->bchw', _inps)
 

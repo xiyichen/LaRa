@@ -1,4 +1,4 @@
-name: lara
+name: lara_env
 channels:
   - pytorch
   - nvidia

@@ -43,8 +43,8 @@ def main(cfg):
                               pin_memory=False)
     loader_iter = iter(loader)
 
-    device = 'cuda'
-    my_system = system.load_from_checkpoint(cfg.infer.ckpt_path, cfg=cfg, map_location=device)
+    device = torch.device('cuda:0')
+    my_system = system.load_from_checkpoint(cfg.infer.ckpt_path, cfg=cfg, map_location=device).to(device)
 
     # metrics
     lpips_vgg_fun = lpips.LPIPS(net='vgg').to(device)
@@ -56,19 +56,6 @@ def main(cfg):
     for i in tqdm(range(len(loader))):#len(loader)
         sample = next(loader_iter)
         sample = {key: tensor.to(device).float() if torch.is_tensor(tensor) else tensor for key, tensor in sample.items()}
-        # pdb.set_trace()
-        # dict_keys(['fovx', 'fovy', 'tar_c2w', 'tar_w2c', 'tar_ixt', 'tar_rgb', 'bg_color', 'transform_mats', 'near_far', 'meta', 'tar_rays', 'tar_rays_down'])
-        # fovx/fovy: [0.5236]
-        # tar_c2w/tar_w2c: [1,4,4,4]
-        # tar_ixt: [1,4,3,3], [955.4050, 256]
-        # tar_rgb: [1,4,512,512,3], [0,1]
-        # bg_color: [1,4,3] 1s
-        # transform_mats: [1,1,4,4]
-        # near_far: [1,2]
-        # meta: {'scene': ['human'], 'tar_h/w': ([512])}
-        # tar_rays: [1,4,512,512,6]
-        # tar_rays_down: [1,4,32,32,6]
-        # pdb.set_trace()
 
         my_system.net.eval()
         
@@ -158,8 +145,8 @@ def main(cfg):
             imageio.mimwrite(f'./{cfg.infer.save_folder}/{name}.mp4', imgs, fps=30, quality=10)
             imageio.mimwrite(f'./{cfg.infer.save_folder}/{name}_nrm.mp4', normal_whites, fps=30, quality=10)
 
-        start_time = time.time()
         if cfg.infer.save_mesh:
+            start_time = time.time()
             from tools.meshExtractor import MeshExtractor
             aabb = cfg.infer.aabb
             gs_params = output['render_pkg'][1] # fine ouputs
@@ -171,9 +158,9 @@ def main(cfg):
                 cams =  uni_video_path(cfg.infer.video_frames, cfg.infer.dataset, sample=sample, fov=fov)
                 mesh_imgs = render_mesh(cams, f'{cfg.infer.save_folder}/{name}.obj')[...,:3]
                 imageio.mimwrite(f'{cfg.infer.save_folder}/{name}_mesh.mp4', mesh_imgs, fps=30, quality=10)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        print(f"Elapsed time: {elapsed_time:.6f} seconds")
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            print(f"Elapsed time: {elapsed_time:.6f} seconds")
                 
         del sample
     

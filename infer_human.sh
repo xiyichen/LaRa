@@ -4,3 +4,4 @@ CUDA_VISIBLE_DEVICES=0 python evaluation.py configs/infer.yaml \
        infer.dataset.dataset_name=human \
        infer.video_frames=0 \
        infer.save_mesh=False \
+       infer.metric_path=outputs/metrics/dna_rendering_zero_shot
