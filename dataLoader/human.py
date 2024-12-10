@@ -179,8 +179,8 @@ class HumanDataset(torch.utils.data.Dataset):
             for k in d.keys():
                 # if count >= 3:
                 #     continue
-                if '0147_04' in k or '0012_09' in k or '0102_02' in k:
-                # if True:
+                # if '0147_04' in k or '0012_09' in k or '0102_02' in k:
+                if True:
                     # if not '0147_04' in k:
                     # if not '0012_09' in k:
                     # if not '0008_01' in k:
@@ -204,14 +204,14 @@ class HumanDataset(torch.utils.data.Dataset):
                     annot_file = main_file.replace('.smc', '_annots.smc')
                     self.main_readers[file_id] = SMCReader(main_file)
                     self.annot_readers[file_id] = SMCReader(annot_file)
-        
-    def __getitem__(self, index):
+    
+    def getitem(self, index):
         file_id = self.scenes_name[index]
         main_reader = self.main_readers[file_id]
         annot_reader = self.annot_readers[file_id]
         num_frames = int(main_reader.smc['Camera_5mp'].attrs['num_frame'])
         if self.split == 'train':
-            frame_idx = random.choice(list(range(num_frames//5)))*5
+            frame_idx = random.choice(list(range(num_frames//20)))*20
         else:
             frame_idx = 100
         cam_ids_low = [2,47,44,41,38,35,32,29,26,23,20,17,14,11,8,5]
@@ -238,6 +238,7 @@ class HumanDataset(torch.utils.data.Dataset):
         tar_w2cs = []
         tar_img = []
         tar_msks = []
+        tar_depths = []
         tar_msks_for_bbox = []
         bg_colors = []
         # for cam_idx in ([front_view_idx, left_view_idx, back_view_idx, right_view_idx]):
@@ -250,6 +251,7 @@ class HumanDataset(torch.utils.data.Dataset):
             mask = annot_reader.get_mask(cam_ids_low[cam_idx], Frame_id=frame_idx)
             mask = cv2.undistort(mask, cameras_low['K'][cam_idx], cameras_low['D'][cam_idx])
             mask = mask[..., np.newaxis].astype(np.float32) / 255.0
+            
             # mask = np.load(f'/fs/gamma-projects/3dnvs_gamma/sapiens/output/seg/dna_rendering_p1/sapiens_1b/{file_id}/{cam_ids_low[cam_idx]}_seg.npy')
             # mask = cv2.imread(f'/fs/gamma-projects/3dnvs_gamma/sam2/output/dna_rendering/{file_id}/{frame_idx}/{cam_ids_low[cam_idx]}.png')[:,:,0]
             # mask = mask[..., np.newaxis].astype(np.float32)
@@ -271,13 +273,26 @@ class HumanDataset(torch.utils.data.Dataset):
             image = image * mask + (bg_color*255) * (1.0 - mask)
             K = cameras_low['K'][cam_idx].copy()
             
-            rgba = np.zeros((image.shape[0], image.shape[1], 4))
-            rgba[:,:,:3] = image
-            rgba[:,:,-1:] = mask.astype(np.float32)*255
-            
-            rgba, x1, y1, s1, s2, x2, y2 = recenter(rgba, mask.astype(np.float32)*255, bg_color*255, border_ratio=0.05)
-            image = rgba[:,:,:3]
-            mask = rgba[:,:,-1] / 255
+            if self.split != 'train':
+                rgba = np.zeros((image.shape[0], image.shape[1], 4))
+                rgba[:,:,:3] = image
+                rgba[:,:,-1:] = mask.astype(np.float32)*255
+                
+                rgba, x1, y1, s1, s2, x2, y2 = recenter(rgba, mask.astype(np.float32)*255, bg_color*255, border_ratio=0.05)
+                image = rgba[:,:,:3]
+                mask = rgba[:,:,-1] / 255
+            else:
+                depth = np.load(f'/fs/gamma-projects/3dnvs_gamma/sapiens/output/depth/dna_rendering_p2/{file_id}/{cam_ids_low[cam_idx]}_{frame_idx}.npy')
+                rgbda = np.zeros((image.shape[0], image.shape[1], 5))
+                rgbda[:,:,:3] = image
+                rgbda[:,:,3] = depth
+                rgbda[:,:,-1:] = mask.astype(np.float32)*255
+                
+                rgbda, x1, y1, s1, s2, x2, y2 = recenter(rgbda, mask.astype(np.float32)*255, bg_color*255, border_ratio=0.05)
+                image = rgbda[:,:,:3]
+                depth = rgbda[:,:,3]
+                mask = rgbda[:,:,-1] / 255
+                depth = cv2.resize(depth, (512, 512))
             
             K[0][2] -= y1
             K[1][2] -= x1
@@ -291,6 +306,11 @@ class HumanDataset(torch.utils.data.Dataset):
             mask = cv2.resize(mask, (512, 512))
             mask[mask<0.5] = 0
             mask[mask>=0.5] = 1
+            if self.split == 'train':
+                depth[mask==0] = 0
+                # depth[depth<0] = 0
+                # depth[mask!=0] = (depth[mask!=0] - depth[mask!=0].min()) / (depth[mask!=0].max() - depth[mask!=0].min())
+                tar_depths.append(depth)
             
             mask_for_bbox = mask.copy()
             labeled_mask, _ = label(mask_for_bbox)
@@ -315,6 +335,9 @@ class HumanDataset(torch.utils.data.Dataset):
         tar_img = torch.from_numpy(tar_img).clamp(0,1).float()
         tar_msks = np.stack(tar_msks, axis=0)
         tar_msks = torch.from_numpy(tar_msks).clamp(0,1).float()
+        if self.split == 'train':
+            tar_depths = np.stack(tar_depths, axis=0)
+            tar_depths = torch.from_numpy(tar_depths).clamp(0,1).float()
         tar_msks_for_bbox = np.stack(tar_msks_for_bbox, axis=0)
         tar_msks_for_bbox = torch.from_numpy(tar_msks_for_bbox).clamp(0,1).float()
         tar_w2cs = np.stack(tar_w2cs, axis=0)
@@ -339,7 +362,7 @@ class HumanDataset(torch.utils.data.Dataset):
         
         # print(sampled_points.shape, sampled_points.max(axis=0), sampled_points.min(axis=0))
         # print(sampled_points.shape, center, sampled_points.max(axis=0).max())
-        tar_w2cs[:,:3,3] *= (0.45 / sampled_points.max(axis=0).max())
+        tar_w2cs[:,:3,3] *= (0.3 / sampled_points.max(axis=0).max())
         del sampled_points
         
         
@@ -375,8 +398,10 @@ class HumanDataset(torch.utils.data.Dataset):
                     'tar_rgb': tar_img.float(),
                     'tar_msk': tar_msks.float(),
                     'transform_mats': transform_mats.astype(np.float32),
-                    'bg_color': bg_colors.astype(np.float32)
+                    'bg_color': bg_colors.astype(np.float32),
                     })
+        if self.split == 'train':
+            ret.update({'tar_depths': tar_depths.float()})
         
         # near_far = np.array([r-0.8, r+0.8]).astype(np.float32)
         ret.update({'near_far': np.array(near_far).astype(np.float32)})
@@ -388,6 +413,13 @@ class HumanDataset(torch.utils.data.Dataset):
         rays_down = build_rays(tar_c2ws, tar_ixts.copy(), H, W, 1.0/16)
         ret.update({f'tar_rays_down': rays_down})
         return ret
+    
+    def __getitem__(self, index):
+        try:
+            return self.getitem(index)
+        except:
+            print('invalid data encountered')
+            return self.getitem(0)
 
     def read_cam(self, scene, view_idx):
         c2w = np.array(scene[f'c2w_{view_idx}'], dtype=np.float32)

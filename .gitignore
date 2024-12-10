@@ -16,3 +16,4 @@ ckpts/*
 slurm*
 debug_vis/*
 logs*
+outputs*

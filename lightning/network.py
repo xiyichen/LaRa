@@ -530,6 +530,12 @@ class Network(L.LightningModule):
 
         outputs = {k: torch.stack([d[k] for d in outputs]) for k in outputs[0]}
         if return_buffer:
-            outputs.update({'render_pkg':render_pkg}) 
+            outputs.update({'render_pkg':render_pkg})
+        # pdb.set_trace()!import code; code.interact(local=vars())
+        # for ni in range(8):
+        #     depth_map = outputs['depth'][0][:,512*ni:512*(ni+1),0].detach().clone()
+        #     depth_map = depth_map.clamp(0, batch['near_far'][i,ni,1])
+        #     depth_map[depth_map>0] = (depth_map[depth_map>0] - depth_map[depth_map>0].min()) / (depth_map[depth_map>0].max() - depth_map[depth_map>0].min())
+        #     cv2.imwrite(f'./debug_vis/{ni}.png', depth_map.detach().cpu().numpy()*255)
         return outputs
 
